@@ -125,17 +125,19 @@ def solve2(
 
     return ans
 
+
 def solve3(
     n: int,
     a: list[list[int]],
 ) -> str:
+    pass
 
 
 def main():
     n = int(input())
     a = [list(map(int, input().split())) for _ in range(n)]
 
-    ans = solve1(n, a)
+    ans = solve2(n, a)
     print("\n".join(ans))
 
 
