@@ -13,6 +13,7 @@ N x Nのグリッド上にベルトコンベアを配置し、順番に動かす
 import random
 import sys
 import time
+import itertools
 
 
 def debug_board(
@@ -35,31 +36,37 @@ def arrange_conveyors(
     全て時計周りを順方向とする。
     """
 
+    # WIDTH = n // 2
+    WIDTH = n // 5
+    # WIDTH = n // 10
     conveyors = []
 
     # 縦向きのベルトコンベア
-    conveyor = []
-    for i in range(0, n, 2):
-        conveyor.extend([(i, j) for j in range(n // 2 + 1, n)])
-        conveyor.extend([(i + 1, j) for j in reversed(range(n // 2 + 1, n))])
-    conveyor.extend([(i, n // 2) for i in reversed(range(0, n))])
-
-    conveyors.append(conveyor)
-
-    # 横向きのベルトコンベア
-    for i in range(0, n, 2):
+    for start in range(0, n, WIDTH):
         conveyor = []
-        conveyor.extend([(i, j) for j in range(n)])
-        conveyor.extend([(i + 1, j) for j in reversed(range(n))])
+        for x in range(start, start + WIDTH, 2):
+            conveyor.extend((y, x) for y in range(1, n))
+            conveyor.extend((y, x + 1) for y in reversed(range(1, n)))
+        conveyor.extend((0, x) for x in reversed(range(start, start + WIDTH)))
         conveyors.append(conveyor)
 
-    # シャッフル用のベルトコンベア
-    conveyor = []
-    for i in range(0, n // 2, 2):
-        conveyor.extend([(j, i) for j in reversed(range(n - 1))])
-        conveyor.extend([(j, i + 1) for j in range(n - 1)])
-    conveyor.extend([n - 1, i] for i in reversed(range(0, n // 2)))
-    conveyors.append(conveyor)
+    # 横向きのベルトコンベア
+    WIDTH = n // 10
+    for start in range(0, n, WIDTH):
+        conveyor = []
+        for y in range(start, start + WIDTH, 2):
+            conveyor.extend((y, x) for x in range(1, n // 2))
+            conveyor.extend((y + 1, x) for x in reversed(range(1, n // 2)))
+        conveyor.extend((y, 0) for y in reversed(range(start, start + WIDTH)))
+        conveyors.append(conveyor)
+
+    for start in range(0, n, WIDTH):
+        conveyor = []
+        for y in range(start, start + WIDTH, 2):
+            conveyor.extend((y, x) for x in range(n // 2 + 1, n))
+            conveyor.extend((y + 1, x) for x in reversed(range(n // 2 + 1, n)))
+        conveyor.extend((y, n // 2) for y in reversed(range(start, start + WIDTH)))
+        conveyors.append(conveyor)
 
     return conveyors
 
@@ -103,23 +110,112 @@ def get_number_position(
     """
 
     idx = board.index(number)
-    return (idx // n, idx % n)
+    return divmod(idx, n)
+
+
+def evaluate(
+    n: int,
+    board: list[int],
+    min_number: int,
+) -> int:
+    """評価関数"""
+    NUM_SAMPLES = 6
+    score = 0
+
+    for idx in range(n * n):
+        y, x = divmod(idx, n)
+        if board[idx] == -1:
+            # 空のマスはゴールから遠いほど良い
+            score += (1 // (abs(y) + abs(x - n // 2) + 1)) * 1e-2
+        else:
+            # 目的の数字はゴールに近いほど良い
+            score += (abs(y) + abs(x - n // 2)) * (
+                1 / (abs(board[idx] - min_number) + 1) ** 4
+            )
+
+    # for i, number in enumerate(range(min_number, min(min_number + NUM_SAMPLES, n * n))):
+    #     number_position = get_number_position(n, board, number)
+    #     score += (abs(number_position[0]) + abs(number_position[1] - n // 2)) * (
+    #         NUM_SAMPLES - i
+    #     ) ** 4
+    #     # score += (abs(number_position[0]) + abs(number_position[1] - n // 2)) * (
+    #     #     1 / (i + 1) ** 8
+    #     # )
+    # # 下側に溜まった数字を減点
+    # for idx in range(n // 2 * n, n * n):
+    #     score += board[idx] != -1
+
+    return score
+
+
+def get_best(
+    n: int,
+    board: list[int],
+    conveyors: list[list[tuple[int, int]]],
+    min_number: int,
+    depth: int = 2,
+):
+    if depth == 0:
+        return None, evaluate(n, board, min_number)
+
+    best_score = float("inf")
+    best_operation = None
+
+    for conveyor_idx in range(len(conveyors)):
+        for steps in [-1, 1]:
+            new_board = list(board)
+            rotate_conveyors(conveyors, conveyor_idx, n, new_board, steps)
+            _, score = get_best(n, new_board, conveyors, min_number, depth - 1)
+
+            if score < best_score:
+                best_score = score
+                best_operation = (conveyor_idx, steps)
+
+    return best_operation, best_score
+
+
+def get_best_by_beam_search(
+    n: int,
+    board: list[int],
+    conveyors: list[list[tuple[int, int]]],
+    min_number: int,
+    depth: int = 3,
+    beam_width: int = 5,
+) -> tuple[int, int]:
+
+    current_beam = [(evaluate(n, board, min_number), list(board), None)]
+
+    for _ in range(depth):
+        next_candidates = []
+
+        for score, current_board, first_operation in current_beam:
+            for conveyor_idx, steps in itertools.product(
+                range(len(conveyors)), [-1, 1]
+            ):
+                new_board = list(current_board)
+                rotate_conveyors(conveyors, conveyor_idx, n, new_board, steps)
+                new_score = evaluate(n, new_board, min_number)
+                next_candidates.append(
+                    (
+                        new_score,
+                        new_board,
+                        (conveyor_idx, steps)
+                        if first_operation is None
+                        else first_operation,
+                    )
+                )
+
+        next_candidates.sort(key=lambda x: x[0])
+        current_beam = next_candidates[:beam_width]
+
+    return current_beam[0][2]
 
 
 def solve(
     n: int,
     a: list[list[int]],
-    schedule: list[int] = None,
 ) -> list[tuple[int, int]]:
-    """
-    ベルトコンベアを回転させる順番を決める。
-    - 現時点で最も小さい数字の座標を取得する
-    - その座標を通る横方向ベルトコンベアを x=N/2 まで回転させる
-    - その座標を通る縦方向ベルトコンベアを y=0 まで回転させる
-    - y=0 まで移動する途中で min_number の次の数字があれば、可能であればそちらも搬出口に移動させる
-    - その座標の数字を除去する
-    - これを全ての数字について繰り返す
-    """
+    """ """
 
     board = list([x for row in a for x in row])
     conveyors = arrange_conveyors(n)
@@ -127,99 +223,22 @@ def solve(
     operations = []
 
     min_number = 0
-    accompanied_number = 0
-
+    itr = 0
     while min_number < n * n:
-        if (
-            schedule
-            and min_number % 10 == 0
-            and min_number // 10 < len(schedule)
-            and schedule[min_number // 10] is not None
-        ):
-            operations.extend(
-                rotate_conveyors(
-                    conveyors, len(conveyors) - 1, n, board, schedule[min_number // 10]
-                )
-            )
+        if itr > 8000:
+            break
+        itr += 1
 
-        min_number_position = get_number_position(n, board, min_number)
-        if min_number_position == (0, n // 2):
+        if board[0 * n + n // 2] == min_number:
+            board[0 * n + n // 2] = -1
             min_number += 1
-            accompanied_number = max(accompanied_number, min_number)
-            continue
 
-        # 横方向ベルトコンベアを x=N/2 まで回転させる
-        conveyor_idx = min_number_position[0] // 2 + 1
-        direction = (
-            1
-            if (min_number_position[0] % 2) ^ (min_number_position[1] < n // 2)
-            else -1
-        )
-        operations.extend(
-            rotate_conveyors(
-                conveyors,
-                conveyor_idx,
-                n,
-                board,
-                direction * abs(min_number_position[1] - n // 2),
-            )
+        best_operation = get_best_by_beam_search(
+            n, board, conveyors, min_number, depth=3, beam_width=3
         )
 
-        # 縦方向ベルトコンベアを y=0 まで回転させる
-        while True:
-            min_number_position = get_number_position(n, board, min_number)
-            if min_number_position[0] == 0:
-                break
-
-            if accompanied_number + 1 < n * n:
-                accompanied_number_position = get_number_position(
-                    n, board, accompanied_number
-                )
-                next_accompanied_number_position = get_number_position(
-                    n, board, accompanied_number + 1
-                )
-
-            if (
-                accompanied_number + 1 < n * n
-                and next_accompanied_number_position[0] // 2
-                > accompanied_number_position[0] // 2
-            ):
-                direction = (
-                    1
-                    if (next_accompanied_number_position[0] % 2)
-                    ^ (next_accompanied_number_position[1] < n // 2)
-                    else -1
-                )
-                # 次に同伴できる数字が現在同伴している数字よりも下のベルトコンベアにあれば、それを先に x=N/2 まで移動させる
-                operations.extend(
-                    rotate_conveyors(
-                        conveyors,
-                        next_accompanied_number_position[0] // 2 + 1,
-                        n,
-                        board,
-                        direction * abs(next_accompanied_number_position[1] - n // 2),
-                    )
-                )
-                accompanied_number += 1
-            else:
-                # 縦方向ベルトコンベアを回転させる
-                conveyor_idx = 0
-                direction = 1
-                operations.extend(
-                    rotate_conveyors(
-                        conveyors,
-                        conveyor_idx,
-                        n,
-                        board,
-                        direction,
-                    )
-                )
-
-        # 数字を除去する
-        board[0 * n + n // 2] = -1
-
-        min_number += 1
-        accompanied_number = max(accompanied_number, min_number)
+        operations.append(best_operation)
+        rotate_conveyors(conveyors, best_operation[0], n, board, best_operation[1])
 
     return (conveyors, operations)
 
@@ -232,23 +251,6 @@ def main():
     a = [list(map(int, input().split())) for _ in range(n)]
 
     best_result = solve(n, a)
-
-    schedule = []
-    for _ in range(30):
-        best_step = None
-        for step in range(-10, 10):
-            result = solve(n, a, schedule + [step])
-
-            if len(result[1]) < len(best_result[1]):
-                print(
-                    f"New best result: {len(result[1])} steps (schedule: {schedule + [step]})",
-                    flush=True,
-                    file=sys.stderr,
-                )
-                best_result = result
-                best_step = step
-
-        schedule.append(best_step)
 
     # 出力
     print(len(best_result[0]))
