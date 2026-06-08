@@ -1,4 +1,5 @@
 [tools]
+dotnet = "9"
 hyperfine = "latest"
 python = "pypy3.11-7.3.20"
 ruff = "latest"

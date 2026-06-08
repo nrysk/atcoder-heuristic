@@ -1,0 +1,6 @@
+# MacOS system files
+.DS_Store
+
+# C# Build results
+bin/
+obj/

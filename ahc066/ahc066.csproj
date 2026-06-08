@@ -1,0 +1,17 @@
+﻿<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <TargetFramework>net9.0</TargetFramework>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+
+    <File Condition="'$(File)' == ''">sol1</File>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <Compile Remove="**/*.cs" />
+    
+    <Compile Include="$(File).cs" />
+  </ItemGroup>
+</Project>
