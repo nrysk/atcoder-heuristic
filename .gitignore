@@ -4,3 +4,5 @@
 # C# Build results
 bin/
 obj/
+
+tools
